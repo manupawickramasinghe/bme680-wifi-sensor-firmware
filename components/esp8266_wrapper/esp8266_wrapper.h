@@ -14,9 +14,10 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-
-#include "driver/uart.h"
+#include "driver/gpio.h"
+#include "driver/i2c.h"
 #include "driver/spi_common.h"
+#include "driver/uart.h"
 
 /*
  * esp-open-rtos SDK function wrapper 
@@ -25,7 +26,7 @@ extern "C" {
 uint32_t sdk_system_get_time ();
 
 #define user_init app_main
-#define uart_set_baud(p,r)  uart_set_baudrate (p,r)
+#define uart_set_baud(p,r) uart_set_baudrate(p,r)
 
 #ifdef CONFIG_FREERTOS_ASSERT_ON_UNTESTED_FUNCTION
 #define vTaskDelayUntil(t,d) { *t=*t; vTaskDelay(d); }

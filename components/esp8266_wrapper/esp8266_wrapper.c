@@ -12,28 +12,29 @@
 
 #include "driver/i2c.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 
 #include "esp8266_wrapper.h"
+#include "esp_timer.h"
 
 // esp-open-rtos SDK function wrapper
 
-uint32_t sdk_system_get_time ()
-{
-    struct timeval time;
-    gettimeofday(&time,0);
-    return time.tv_sec*1e6 + time.tv_usec;
-}
-
 bool gpio_isr_service_installed = false;
-bool auto_pull_up = false;
+bool auto_pull_up   = false;
 bool auto_pull_down = true;
 
-esp_err_t gpio_set_interrupt(gpio_num_t gpio, 
-                             gpio_int_type_t type, 
-                             gpio_interrupt_handler_t handler)
+uint32_t sdk_system_get_time(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000);  // Convert to microseconds
+}
+
+esp_err_t gpio_set_interrupt(gpio_num_t gpio, gpio_int_type_t type, gpio_interrupt_handler_t handler)
 {
     if (!gpio_isr_service_installed)
-        gpio_isr_service_installed = (gpio_install_isr_service(0) == ESP_OK);
+    {
+        gpio_install_isr_service(0);
+        gpio_isr_service_installed = true;
+    }
 
     gpio_config_t gpio_cfg = {
        .pin_bit_mask = ((uint64_t)(((uint64_t)1)<< gpio)),
@@ -50,7 +51,7 @@ esp_err_t gpio_set_interrupt(gpio_num_t gpio,
     return ESP_OK;
 }
 
-void gpio_enable (gpio_num_t gpio, const gpio_mode_t mode)
+void gpio_enable(gpio_num_t gpio, const gpio_mode_t mode)
 {
     gpio_config_t gpio_cfg = {
        .pin_bit_mask = ((uint64_t)(((uint64_t)1)<< gpio)),
@@ -66,62 +67,55 @@ void gpio_enable (gpio_num_t gpio, const gpio_mode_t mode)
 #define I2C_ACK_VAL  0x0
 #define I2C_NACK_VAL 0x1
 
-void i2c_init (int bus, gpio_num_t scl, gpio_num_t sda, uint32_t freq)
+void i2c_init(int bus, gpio_num_t scl, gpio_num_t sda, uint32_t freq)
 {
-    i2c_config_t conf;
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = sda;
-    conf.scl_io_num = scl;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = freq;
+    i2c_config_t conf = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = sda,
+        .scl_io_num = scl,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = freq,
+    };
     i2c_param_config(bus, &conf);
     i2c_driver_install(bus, I2C_MODE_MASTER, 0, 0, 0);
 }
 
-int i2c_slave_write (uint8_t bus, uint8_t addr, const uint8_t *reg, 
-                     uint8_t *data, uint32_t len)
+int i2c_slave_write(uint8_t bus, uint8_t addr, const uint8_t *reg, uint8_t *data, uint32_t len)
 {
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, addr << 1 | I2C_MASTER_WRITE, true);
+    i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
     if (reg)
         i2c_master_write_byte(cmd, *reg, true);
-    if (data)
+    if (data && len)
         i2c_master_write(cmd, data, len, true);
     i2c_master_stop(cmd);
-    esp_err_t err = i2c_master_cmd_begin(bus, cmd, 1000 / portTICK_RATE_MS);
+    esp_err_t err = i2c_master_cmd_begin(bus, cmd, 1000 / portTICK_PERIOD_MS);
     i2c_cmd_link_delete(cmd);
-    
-    return err;
+    return err == ESP_OK ? 0 : -1;
 }
 
-int i2c_slave_read (uint8_t bus, uint8_t addr, const uint8_t *reg, 
-                    uint8_t *data, uint32_t len)
+int i2c_slave_read(uint8_t bus, uint8_t addr, const uint8_t *reg, uint8_t *data, uint32_t len)
 {
-    if (len == 0) return true;
-
+    if (!data || !len) return -1;
+    
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     if (reg)
     {
         i2c_master_start(cmd);
-        i2c_master_write_byte(cmd, ( addr << 1 ) | I2C_MASTER_WRITE, true);
+        i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
         i2c_master_write_byte(cmd, *reg, true);
-        if (!data)
-            i2c_master_stop(cmd);
     }
-    if (data)
-    {
-        i2c_master_start(cmd);
-        i2c_master_write_byte(cmd, ( addr << 1 ) | I2C_MASTER_READ, true);
-        if (len > 1) i2c_master_read(cmd, data, len-1, I2C_ACK_VAL);
-        i2c_master_read_byte(cmd, data + len-1, I2C_NACK_VAL);
-        i2c_master_stop(cmd);
-    }
-    esp_err_t err = i2c_master_cmd_begin(bus, cmd, 1000 / portTICK_RATE_MS);
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_READ, true);
+    if (len > 1)
+        i2c_master_read(cmd, data, len - 1, I2C_MASTER_ACK);
+    i2c_master_read_byte(cmd, data + len - 1, I2C_MASTER_NACK);
+    i2c_master_stop(cmd);
+    esp_err_t err = i2c_master_cmd_begin(bus, cmd, 1000 / portTICK_PERIOD_MS);
     i2c_cmd_link_delete(cmd);
-
-    return err;
+    return err == ESP_OK ? 0 : -1;
 }
 
 // esp-open-rtos SPI interface wrapper

@@ -63,8 +63,8 @@
 
 // I2C interface defintions for ESP32 and ESP8266
 #define I2C_BUS       0
-#define I2C_SCL_PIN   14
-#define I2C_SDA_PIN   13
+#define I2C_SCL_PIN   7  // Using GPIO 7 for SCL
+#define I2C_SDA_PIN   6  // Using GPIO 6 for SDA
 #define I2C_FREQ      I2C_FREQ_100K
 
 /* -- user tasks --------------------------------------------------- */
@@ -110,12 +110,18 @@ void user_task(void *pvParameters)
 
 /* -- main program ------------------------------------------------- */
 
-void user_init(void)
+void app_main(void)
 {
-    // Set UART Parameter.
-    uart_set_baud(0, 115200);
-    // Give the UART some time to settle
-    vTaskDelay(1);
+    // Initialize UART
+    uart_config_t uart_config = {
+        .baud_rate = 115200,
+        .data_bits = UART_DATA_8_BITS,
+        .parity    = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+    };
+    uart_param_config(UART_NUM_0, &uart_config);
+    uart_driver_install(UART_NUM_0, 256, 0, 0, NULL, 0);
     
     /** -- MANDATORY PART -- */
 
