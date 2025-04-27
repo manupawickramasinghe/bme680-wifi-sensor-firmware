@@ -37,7 +37,7 @@ void i2c_master_init() {
 void user_task(void *pvParameters)
 {
     bme680_values_float_t values;
-    char mqtt_data[128];
+    char mqtt_data[256];
     TickType_t last_wakeup = xTaskGetTickCount();
     uint32_t duration = bme680_get_measurement_duration(sensor);
     esp_mqtt_client_handle_t mqtt_client = get_mqtt_client();
@@ -56,12 +56,12 @@ void user_task(void *pvParameters)
                 
                 // Publish to MQTT if client is available
                 if (mqtt_client != NULL) {
-                    esp_mqtt_client_publish(mqtt_client, "/sensor/bme680", mqtt_data, 0, 1, 0);
+                    esp_mqtt_client_publish(mqtt_client, "/zektopic/sensor/bme680", mqtt_data, 0, 1, 0);
                 }
                 
                 // Also print to console
-                printf("%.3f BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
-                       (double)esp_timer_get_time()*1e-6,
+                ESP_LOGE("BME680", "%.3f BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm",
+                       (double)esp_timer_get_time() * 1e-6,
                        values.temperature, values.humidity,
                        values.pressure, values.gas_resistance);
             }

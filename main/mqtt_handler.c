@@ -26,7 +26,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_subscribe(client, "/manupa/bme680/command", 0);
+        msg_id = esp_mqtt_client_subscribe(client, "/zektopic/sensor/bme680/command", 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
         break;
 
@@ -71,9 +71,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 void mqtt_init(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://test.mosquitto.org",
-        .credentials.username = NULL,
-        .credentials.authentication.password = NULL
+        .broker.address.uri = "mqtt://mqtt.eclipseprojects.io",
+        .credentials.username = "user",
+        .credentials.authentication.password = "client"
     };
 
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
