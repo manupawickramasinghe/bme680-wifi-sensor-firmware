@@ -17,8 +17,14 @@
 #include "esp_system.h"
 #include "esp_netif.h"
 #include "esp_smartconfig.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 #include "smartconfig_ack.h"
 #include "smartconfig.h"
+#include "driver/gpio.h"
+
+#define WIFI_CREDS_NAMESPACE "wifi_creds"
+#define RESET_BUTTON_GPIO 5
 
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
 static EventGroupHandle_t s_wifi_event_group;
@@ -34,11 +40,65 @@ static esp_netif_t *sta_netif = NULL;
 
 static void smartconfig_example_task(void * parm);
 
+void erase_wifi_credentials(void) {
+    nvs_handle_t nvs_handle;
+    ESP_ERROR_CHECK(nvs_open(WIFI_CREDS_NAMESPACE, NVS_READWRITE, &nvs_handle));
+    ESP_ERROR_CHECK(nvs_erase_all(nvs_handle));
+    ESP_ERROR_CHECK(nvs_commit(nvs_handle));
+    nvs_close(nvs_handle);
+    ESP_LOGI(TAG, "WiFi credentials erased");
+    esp_restart();
+}
+
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
+    erase_wifi_credentials();
+}
+
+static void save_wifi_credentials(const char* ssid, const char* password) {
+    nvs_handle_t nvs_handle;
+    ESP_ERROR_CHECK(nvs_open(WIFI_CREDS_NAMESPACE, NVS_READWRITE, &nvs_handle));
+    ESP_ERROR_CHECK(nvs_set_str(nvs_handle, "ssid", ssid));
+    ESP_ERROR_CHECK(nvs_set_str(nvs_handle, "password", password));
+    ESP_ERROR_CHECK(nvs_commit(nvs_handle));
+    nvs_close(nvs_handle);
+}
+
+static bool load_wifi_credentials(wifi_config_t* wifi_config) {
+    nvs_handle_t nvs_handle;
+    size_t ssid_len = sizeof(wifi_config->sta.ssid);
+    size_t pass_len = sizeof(wifi_config->sta.password);
+    
+    esp_err_t err = nvs_open(WIFI_CREDS_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (err != ESP_OK) return false;
+    
+    err = nvs_get_str(nvs_handle, "ssid", (char*)wifi_config->sta.ssid, &ssid_len);
+    if (err != ESP_OK) {
+        nvs_close(nvs_handle);
+        return false;
+    }
+    
+    err = nvs_get_str(nvs_handle, "password", (char*)wifi_config->sta.password, &pass_len);
+    if (err != ESP_OK) {
+        nvs_close(nvs_handle);
+        return false;
+    }
+    
+    nvs_close(nvs_handle);
+    return true;
+}
+
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
+        // Check for saved credentials first
+        wifi_config_t wifi_config = {0};
+        if (load_wifi_credentials(&wifi_config)) {
+            ESP_LOGI(TAG, "Using saved credentials");
+            esp_wifi_connect();
+        } else {
+            xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         esp_wifi_connect();
         xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
@@ -69,6 +129,9 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGI(TAG, "SSID:%s", ssid);
         ESP_LOGI(TAG, "PASSWORD:%s", password);
 
+        // Save credentials to NVS
+        save_wifi_credentials((char*)ssid, (char*)password);
+
         ESP_ERROR_CHECK( esp_wifi_disconnect() );
         ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
         esp_wifi_connect();
@@ -98,6 +161,18 @@ static void smartconfig_example_task(void * parm)
 
 void initialise_wifi(void)
 {
+    // Configure GPIO for reset button
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << RESET_BUTTON_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_NEGEDGE,
+    };
+    gpio_config(&io_conf);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(RESET_BUTTON_GPIO, gpio_isr_handler, NULL);
+
     s_wifi_event_group = xEventGroupCreate();
 
     ESP_ERROR_CHECK(esp_netif_init());

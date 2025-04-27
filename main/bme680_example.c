@@ -3,8 +3,6 @@
 #include "driver/i2c.h"
 #include "esp_log.h"
 
-#ifdef ESP_PLATFORM 
-
 #define TASK_STACK_DEPTH 2048
 
 #define I2C_MASTER_SCL_IO           7      // GPIO 7 for I2C SCL
@@ -13,20 +11,6 @@
 #define I2C_MASTER_FREQ_HZ          100000 // I2C master clock frequency
 #define I2C_MASTER_TX_BUF_DISABLE   0      // I2C master doesn't need buffer
 #define I2C_MASTER_RX_BUF_DISABLE   0      // I2C master doesn't need buffer
-
-#else  // ESP8266 (esp-open-rtos)
-
-// user task stack depth for ESP8266
-#define TASK_STACK_DEPTH 256
-
-// SPI interface definitions for ESP8266
-#define SPI_BUS       1
-#define SPI_SCK_GPIO  14
-#define SPI_MOSI_GPIO 13
-#define SPI_MISO_GPIO 12
-#define SPI_CS_GPIO   2   // GPIO 15, the default CS of SPI bus 1, can't be used
-
-#endif  // ESP_PLATFORM
 
 static bme680_sensor_t* sensor = 0;
 
@@ -80,7 +64,6 @@ void user_task(void *pvParameters)
     }
 }
 
-/* -- main program ------------------------------------------------- */
 
 void app_main(void)
 {
@@ -112,7 +95,7 @@ void app_main(void)
 
         // Changes the oversampling rates to 4x oversampling for temperature
         // and 2x oversampling for humidity. Pressure measurement is skipped.
-        bme680_set_oversampling_rates(sensor, osr_4x, osr_none, osr_2x);
+        bme680_set_oversampling_rates(sensor, osr_4x, osr_4x, osr_2x);
 
         // Change the IIR filter size for temperature and pressure to 7.
         bme680_set_filter_size(sensor, iir_size_7);
@@ -124,12 +107,6 @@ void app_main(void)
         // Set ambient temperature to 25 degree Celsius
         bme680_set_ambient_temperature (sensor, 25);
             
-        /** -- TASK CREATION PART --- */
-
-        // must be done last to avoid concurrency situations with the sensor 
-        // configuration part
-
-        // Create a task that uses the sensor
         xTaskCreate(user_task, "user_task", TASK_STACK_DEPTH, NULL, 2, NULL);
     }
     else

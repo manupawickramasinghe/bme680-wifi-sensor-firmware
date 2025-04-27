@@ -14,5 +14,6 @@
 #include "smartconfig_ack.h"
 
 void initialise_wifi(void);
+void erase_wifi_credentials(void);
 
 #endif /* _SMARTCONFIG_H_ */
