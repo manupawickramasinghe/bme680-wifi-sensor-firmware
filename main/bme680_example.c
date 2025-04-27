@@ -1,51 +1,18 @@
-/**
- * Simple example with one sensor connected either to I2C bus 0 or
- * SPI bus 1.
- *
- * Harware configuration:
- *
- *   I2C
- *
- *   +-----------------+   +----------+
- *   | ESP8266 / ESP32 |   | BME680   |
- *   |                 |   |          |
- *   |   GPIO 14 (SCL) ----> SCL      |
- *   |   GPIO 13 (SDA) <---> SDA      |
- *   +-----------------+   +----------+
- *
- *   SPI   
- *
- *   +-----------------+   +----------+      +-----------------+   +----------+
- *   | ESP8266         |   | BME680   |      | ESP32           |   | BME680   |
- *   |                 |   |          |      |                 |   |          |
- *   |   GPIO 14 (SCK) ----> SCK      |      |   GPIO 16 (SCK) ----> SCK      |
- *   |   GPIO 13 (MOSI)----> SDI      |      |   GPIO 17 (MOSI)----> SDI      |
- *   |   GPIO 12 (MISO)<---- SDO      |      |   GPIO 18 (MISO)<---- SDO      |
- *   |   GPIO 2  (CS)  ----> CS       |      |   GPIO 19 (CS)  ----> CS       |
- *   +-----------------+    +---------+      +-----------------+   +----------+
- */
-
-/* -- use following constants to define the example mode ----------- */
-
-// #define SPI_USED
-
-/* -- includes ----------------------------------------------------- */
-
 #include "bme680.h"
+#include "smartconfig.h"
+#include "driver/i2c.h"
+#include "esp_log.h"
 
-/* -- platform dependent definitions ------------------------------- */
+#ifdef ESP_PLATFORM 
 
-#ifdef ESP_PLATFORM  // ESP32 (ESP-IDF)
-
-// user task stack depth for ESP32
 #define TASK_STACK_DEPTH 2048
 
-// SPI interface definitions for ESP32
-#define SPI_BUS       HSPI_HOST
-#define SPI_SCK_GPIO  16
-#define SPI_MOSI_GPIO 17
-#define SPI_MISO_GPIO 18
-#define SPI_CS_GPIO   19
+#define I2C_MASTER_SCL_IO           7      // GPIO 7 for I2C SCL
+#define I2C_MASTER_SDA_IO           6      // GPIO 6 for I2C SDA
+#define I2C_MASTER_NUM              0      // I2C master i2c port number
+#define I2C_MASTER_FREQ_HZ          100000 // I2C master clock frequency
+#define I2C_MASTER_TX_BUF_DISABLE   0      // I2C master doesn't need buffer
+#define I2C_MASTER_RX_BUF_DISABLE   0      // I2C master doesn't need buffer
 
 #else  // ESP8266 (esp-open-rtos)
 
@@ -61,15 +28,20 @@
 
 #endif  // ESP_PLATFORM
 
-// I2C interface defintions for ESP32 and ESP8266
-#define I2C_BUS       0
-#define I2C_SCL_PIN   7  // Using GPIO 7 for SCL
-#define I2C_SDA_PIN   6  // Using GPIO 6 for SDA
-#define I2C_FREQ      I2C_FREQ_100K
-
-/* -- user tasks --------------------------------------------------- */
-
 static bme680_sensor_t* sensor = 0;
+
+void i2c_master_init() {
+    i2c_config_t conf = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
+    };
+    i2c_param_config(I2C_MASTER_NUM, &conf);
+    i2c_driver_install(I2C_MASTER_NUM, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
+}
 
 /*
  * User task that triggers measurements of sensor every seconds. It uses
@@ -125,22 +97,14 @@ void app_main(void)
     
     /** -- MANDATORY PART -- */
 
-    #ifdef SPI_USED
+    ESP_ERROR_CHECK( nvs_flash_init() );
+    initialise_wifi();
 
-    spi_bus_init (SPI_BUS, SPI_SCK_GPIO, SPI_MISO_GPIO, SPI_MOSI_GPIO);
+    // Initialize I2C
+    i2c_master_init();
 
-    // init the sensor connected to SPI_BUS with SPI_CS_GPIO as chip select.
-    sensor = bme680_init_sensor (SPI_BUS, 0, SPI_CS_GPIO);
-    
-    #else  // I2C
-
-    // Init all I2C bus interfaces at which BME680 sensors are connected
-    i2c_init(I2C_BUS, I2C_SCL_PIN, I2C_SDA_PIN, I2C_FREQ);
-
-    // init the sensor with slave address BME680_I2C_ADDRESS_2 connected to I2C_BUS.
-    sensor = bme680_init_sensor (I2C_BUS, BME680_I2C_ADDRESS_2, 0);
-
-    #endif  // SPI_USED
+    // init the sensor with slave address BME680_I2C_ADDRESS_2
+    sensor = bme680_init_sensor(I2C_MASTER_NUM, BME680_I2C_ADDRESS_2, 0);
 
     if (sensor)
     {
@@ -157,8 +121,8 @@ void app_main(void)
         bme680_set_heater_profile (sensor, 0, 200, 100);
         bme680_use_heater_profile (sensor, 0);
 
-        // Set ambient temperature to 10 degree Celsius
-        bme680_set_ambient_temperature (sensor, 10);
+        // Set ambient temperature to 25 degree Celsius
+        bme680_set_ambient_temperature (sensor, 25);
             
         /** -- TASK CREATION PART --- */
 
@@ -169,5 +133,7 @@ void app_main(void)
         xTaskCreate(user_task, "user_task", TASK_STACK_DEPTH, NULL, 2, NULL);
     }
     else
-        printf("Could not initialize BME680 sensor\n");
+    {
+        ESP_LOGE("BME680", "Could not initialize BME680 sensor");
+    }
 }
