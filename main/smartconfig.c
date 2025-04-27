@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
+#include "freertos/timers.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -25,6 +26,7 @@
 
 #define WIFI_CREDS_NAMESPACE "wifi_creds"
 #define RESET_BUTTON_GPIO 5
+#define LONG_PRESS_TIME_MS 5000  // 5 seconds
 
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
 static EventGroupHandle_t s_wifi_event_group;
@@ -37,6 +39,9 @@ static const int ESPTOUCH_DONE_BIT = BIT1;
 static const char *TAG = "smartconfig";
 
 static esp_netif_t *sta_netif = NULL;
+static TimerHandle_t button_timer = NULL;
+static bool button_pressed = false;
+static BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
 static void smartconfig_example_task(void * parm);
 
@@ -50,8 +55,26 @@ void erase_wifi_credentials(void) {
     esp_restart();
 }
 
+static void button_timer_callback(TimerHandle_t timer) {
+    if (button_pressed) {
+        ESP_LOGI(TAG, "Button held for 5 seconds - erasing WiFi credentials");
+        erase_wifi_credentials();
+    }
+}
+
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
-    erase_wifi_credentials();
+    int level = gpio_get_level(RESET_BUTTON_GPIO);
+    button_pressed = (level == 0);  // Active low
+
+    if (button_pressed) {
+        xTimerStartFromISR(button_timer, &xHigherPriorityTaskWoken);
+    } else {
+        xTimerStopFromISR(button_timer, &xHigherPriorityTaskWoken);
+    }
+    
+    if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
+    }
 }
 
 static void save_wifi_credentials(const char* ssid, const char* password) {
@@ -161,17 +184,22 @@ static void smartconfig_example_task(void * parm)
 
 void initialise_wifi(void)
 {
-    // Configure GPIO for reset button
+    // Configure GPIO for reset button with interrupt
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << RESET_BUTTON_GPIO),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_NEGEDGE,
+        .intr_type = GPIO_INTR_ANYEDGE
     };
     gpio_config(&io_conf);
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(RESET_BUTTON_GPIO, gpio_isr_handler, NULL);
+    
+    // Create timer for button press
+    button_timer = xTimerCreate("ButtonTimer", pdMS_TO_TICKS(LONG_PRESS_TIME_MS),
+                               pdFALSE, NULL, button_timer_callback);
+    
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(RESET_BUTTON_GPIO, gpio_isr_handler, NULL));
 
     s_wifi_event_group = xEventGroupCreate();
 
