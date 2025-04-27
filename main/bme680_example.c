@@ -1,7 +1,9 @@
 #include "bme680.h"
 #include "smartconfig.h"
+#include "mqtt_handler.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #define TASK_STACK_DEPTH 2048
 
@@ -35,31 +37,35 @@ void i2c_master_init() {
 void user_task(void *pvParameters)
 {
     bme680_values_float_t values;
-
+    char mqtt_data[128];
     TickType_t last_wakeup = xTaskGetTickCount();
-
-    // as long as sensor configuration isn't changed, duration is constant
     uint32_t duration = bme680_get_measurement_duration(sensor);
+    esp_mqtt_client_handle_t mqtt_client = get_mqtt_client();
 
     while (1)
     {
-        // trigger the sensor to start one TPHG measurement cycle
-        if (bme680_force_measurement (sensor))
+        if (bme680_force_measurement(sensor))
         {
-            // passive waiting until measurement results are available
-            vTaskDelay (duration);
+            vTaskDelay(duration);
 
-            // alternatively: busy waiting until measurement results are available
-            // while (bme680_is_measuring (sensor)) ;
-
-            // get the results and do something with them
-            if (bme680_get_results_float (sensor, &values))
+            if (bme680_get_results_float(sensor, &values)) {
+                // Format sensor data as JSON
+                snprintf(mqtt_data, sizeof(mqtt_data), 
+                        "{\"temperature\":%.2f,\"humidity\":%.2f,\"pressure\":%.2f,\"gas\":%.2f}",
+                        values.temperature, values.humidity, values.pressure, values.gas_resistance);
+                
+                // Publish to MQTT if client is available
+                if (mqtt_client != NULL) {
+                    esp_mqtt_client_publish(mqtt_client, "/sensor/bme680", mqtt_data, 0, 1, 0);
+                }
+                
+                // Also print to console
                 printf("%.3f BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
-                       (double)sdk_system_get_time()*1e-3,
+                       (double)esp_timer_get_time()*1e-6,
                        values.temperature, values.humidity,
                        values.pressure, values.gas_resistance);
+            }
         }
-        // passive waiting until 1 second is over
         vTaskDelayUntil(&last_wakeup, 1000 / portTICK_PERIOD_MS);
     }
 }
@@ -82,6 +88,9 @@ void app_main(void)
 
     ESP_ERROR_CHECK( nvs_flash_init() );
     initialise_wifi();
+
+    // Initialize MQTT after WiFi
+    mqtt_init();
 
     // Initialize I2C
     i2c_master_init();
