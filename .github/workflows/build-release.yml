@@ -50,7 +50,7 @@ jobs:
       - name: Prepare Release Files
         run: |
           mkdir -p release-files
-          cp build/bme680-wifi-sensor-firmware.bin release-files/bme680-${{ matrix.target }}.bin
+          cp build/bme680.bin release-files/bme680-${{ matrix.target }}.bin
           cp build/bootloader/bootloader.bin release-files/bootloader-${{ matrix.target }}.bin
           cp build/partition_table/partition-table.bin release-files/partition-table-${{ matrix.target }}.bin
           echo "Release files prepared:"
