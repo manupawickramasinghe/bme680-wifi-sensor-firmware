@@ -6,7 +6,24 @@ on:
       - master
 
 jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: release-${{ github.sha }}
+          release_name: Release ${{ github.sha }}
+          draft: false
+          prerelease: false
+
   build:
+    needs: create_release
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -24,24 +41,12 @@ jobs:
           target: ${{ matrix.target }}
           path: '.'
 
-      - name: Create Release
-        id: create_release
-        if: matrix.target == 'esp32'  # Create release only once
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: release-${{ github.sha }}
-          release_name: Release ${{ github.sha }}
-          draft: false
-          prerelease: false
-
       - name: Upload Binary
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_path: ./build/bme680.bin
           asset_name: bme680-${{ matrix.target }}.bin
           asset_content_type: application/octet-stream
@@ -51,7 +56,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_path: ./build/bootloader/bootloader.bin
           asset_name: bootloader-${{ matrix.target }}.bin
           asset_content_type: application/octet-stream
@@ -61,7 +66,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
           asset_path: ./build/partition_table/partition-table.bin
           asset_name: partition-table-${{ matrix.target }}.bin
           asset_content_type: application/octet-stream

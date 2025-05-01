@@ -602,3 +602,110 @@ void user_init(void)
 }
 ```
 
+## ESP-IDF Version Support
+
+This project is built using ESP-IDF version 5.1.3. The code supports multiple ESP32 variants:
+
+- ESP32
+- ESP32-C3
+- ESP32-C6  
+- ESP32-S2
+- ESP32-S3
+
+## Project Structure
+
+The project is organized as follows:
+
+```
+bme680-wifi-sensor-firmware/
+├── components/
+│   ├── bme680/             # BME680 sensor driver
+│   └── esp8266_wrapper/    # ESP8266 compatibility layer
+├── main/
+│   ├── bme680_example.c    # Main application code
+│   ├── mqtt_handler.c      # MQTT client implementation
+│   └── smartconfig.c       # WiFi provisioning
+├── .github/
+│   └── workflows/          # GitHub Actions CI/CD
+└── README.md
+```
+
+## Build Process
+
+The project uses GitHub Actions for automated builds and releases. The workflow:
+
+1. Triggers on pushes to master branch
+2. Builds firmware for all supported ESP32 variants
+3. Creates a new release with version tag
+4. Uploads build artifacts for each target:
+   - Main firmware binary (bme680-{target}.bin)
+   - Bootloader (bootloader-{target}.bin)
+   - Partition table (partition-table-{target}.bin)
+
+## WiFi Configuration
+
+The device uses ESP SmartConfig for WiFi provisioning:
+
+1. On first boot, device enters SmartConfig mode
+2. Use ESP SmartConfig mobile app to send WiFi credentials
+3. Credentials are saved in NVS flash
+4. Device connects automatically on subsequent boots
+5. Long press reset button (5s) to clear saved credentials
+
+## MQTT Communication
+
+The sensor publishes data to an MQTT broker:
+
+- Topic: `zektopic/sensor/bme680/data`
+- Message format: JSON with temperature, humidity, pressure and gas resistance
+- Default broker: `mqtt.eclipseprojects.io` 
+
+## Building and Flashing
+
+To build the project:
+
+```bash
+idf.py set-target <target>  # esp32, esp32c3, etc.
+idf.py build
+```
+
+To flash:
+```bash
+idf.py -p <PORT> flash monitor
+```
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for automated builds and releases. The workflow configuration can be found in `.github/workflows/build-release.yml`.
+
+Key features:
+- Matrix build for all supported ESP32 variants
+- Automatic versioning based on git commits
+- Binary artifacts published to GitHub Releases
+- Build status checks on PRs
+
+See the workflow file for detailed configuration.
+
+## Known Issues
+
+1. Initial gas resistance readings may be unstable during sensor warmup
+2. WiFi reconnection may take up to 30 seconds after power loss
+3. MQTT connection requires stable internet connectivity
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to your fork
+5. Create a Pull Request
+
+Please ensure your PR includes:
+- Clear description of changes
+- Test results on supported hardware
+- Updates to documentation if needed
+
+## License
+
+This project is licensed under the BSD 3-Clause License. See LICENSE file for details.
+
