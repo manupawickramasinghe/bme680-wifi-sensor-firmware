@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [esp32, esp32c3, esp32c6, esp32s3, esp32s2]
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -18,11 +21,12 @@ jobs:
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.1.3
-          target: esp32
+          target: ${{ matrix.target }}
           path: '.'
 
       - name: Create Release
         id: create_release
+        if: matrix.target == 'esp32'  # Create release only once
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,8 +42,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/bme680-wifi-sensor-firmware.bin
-          asset_name: bme680-wifi-sensor-firmware.bin
+          asset_path: ./build/bme680.bin
+          asset_name: bme680-${{ matrix.target }}.bin
           asset_content_type: application/octet-stream
 
       - name: Upload Bootloader
@@ -49,7 +53,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./build/bootloader/bootloader.bin
-          asset_name: bootloader.bin
+          asset_name: bootloader-${{ matrix.target }}.bin
           asset_content_type: application/octet-stream
 
       - name: Upload Partition Table
@@ -59,5 +63,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./build/partition_table/partition-table.bin
-          asset_name: partition-table.bin
+          asset_name: partition-table-${{ matrix.target }}.bin
           asset_content_type: application/octet-stream
