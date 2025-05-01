@@ -42,6 +42,20 @@ jobs:
           target: ${{ matrix.target }}
           path: '.'
 
+      - name: List Build Directory
+        run: |
+          echo "Build directory contents:"
+          ls -R build/
+
+      - name: Prepare Release Files
+        run: |
+          mkdir -p release-files
+          cp build/bme680-wifi-sensor-firmware.bin release-files/bme680-${{ matrix.target }}.bin
+          cp build/bootloader/bootloader.bin release-files/bootloader-${{ matrix.target }}.bin
+          cp build/partition_table/partition-table.bin release-files/partition-table-${{ matrix.target }}.bin
+          echo "Release files prepared:"
+          ls -l release-files/
+
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         env:
@@ -49,6 +63,6 @@ jobs:
         with:
           tag_name: release-${{ github.sha }}
           files: |
-            ./build/bme680.bin=>bme680-${{ matrix.target }}.bin
-            ./build/bootloader/bootloader.bin=>bootloader-${{ matrix.target }}.bin
-            ./build/partition_table/partition-table.bin=>partition-table-${{ matrix.target }}.bin
+            release-files/bme680-${{ matrix.target }}.bin
+            release-files/bootloader-${{ matrix.target }}.bin
+            release-files/partition-table-${{ matrix.target }}.bin
