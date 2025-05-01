@@ -13,14 +13,15 @@ jobs:
     steps:
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: release-${{ github.sha }}
-          release_name: Release ${{ github.sha }}
+          name: Release ${{ github.sha }}
           draft: false
           prerelease: false
+          generate_release_notes: true
 
   build:
     needs: create_release
@@ -41,32 +42,17 @@ jobs:
           target: ${{ matrix.target }}
           path: '.'
 
-      - name: Upload Binary
-        uses: actions/upload-release-asset@v1
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./build/bme680.bin
-          asset_name: bme680-${{ matrix.target }}.bin
-          asset_content_type: application/octet-stream
-
-      - name: Upload Bootloader
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./build/bootloader/bootloader.bin
-          asset_name: bootloader-${{ matrix.target }}.bin
-          asset_content_type: application/octet-stream
-
-      - name: Upload Partition Table
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ./build/partition_table/partition-table.bin
-          asset_name: partition-table-${{ matrix.target }}.bin
-          asset_content_type: application/octet-stream
+          tag_name: release-${{ github.sha }}
+          files: |
+            ./build/bme680.bin
+            ./build/bootloader/bootloader.bin
+            ./build/partition_table/partition-table.bin
+          file_patterns: |
+            build/*.bin
+            build/bootloader/*.bin
+            build/partition_table/*.bin
