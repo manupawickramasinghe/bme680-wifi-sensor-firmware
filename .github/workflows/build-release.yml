@@ -49,10 +49,6 @@ jobs:
         with:
           tag_name: release-${{ github.sha }}
           files: |
-            ./build/bme680.bin
-            ./build/bootloader/bootloader.bin
-            ./build/partition_table/partition-table.bin
-          file_patterns: |
-            build/*.bin
-            build/bootloader/*.bin
-            build/partition_table/*.bin
+            ./build/bme680.bin=>bme680-${{ matrix.target }}.bin
+            ./build/bootloader/bootloader.bin=>bootloader-${{ matrix.target }}.bin
+            ./build/partition_table/partition-table.bin=>partition-table-${{ matrix.target }}.bin
