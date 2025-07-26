@@ -68,15 +68,72 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+static bool wait_for_wifi(void)
+{
+    int retry = 0;
+    const int max_retries = 20;  // 10 seconds total
+    
+    while (esp_netif_get_nr_of_ifs() == 0 && retry < max_retries) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        retry++;
+    }
+    
+    return (retry < max_retries);
+}
+
+static bool wait_for_network(void)
+{
+    int retry = 0;
+    const int max_retries = 30;  // 15 seconds total
+    esp_netif_t *netif = NULL;
+    esp_netif_ip_info_t ip_info;
+    
+    while (retry < max_retries) {
+        netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (netif && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+            if (ip_info.ip.addr != 0) {
+                ESP_LOGI(TAG, "IP obtained");
+                return true;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+        retry++;
+    }
+    
+    return false;
+}
+
 void mqtt_init(void)
 {
+    if (!wait_for_network()) {
+        ESP_LOGE(TAG, "Network not ready, skipping MQTT initialization");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Initializing MQTT client");
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = "mqtt://test.mosquitto.org",
-        .credentials.username = "NULL",
-        .credentials.authentication.password = "NULL"
+        .broker.verification.skip_cert_common_name_check = true,
+        .network.disable_auto_reconnect = false,
+        .network.timeout_ms = 5000,
+        .network.reconnect_timeout_ms = 15000,
+        .session.keepalive = 60,
+        .session.disable_clean_session = false,
     };
 
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
+    if (mqtt_client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize MQTT client");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Registering MQTT events");
     esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(mqtt_client);
+    
+    ESP_LOGI(TAG, "Starting MQTT client");
+    esp_err_t err = esp_mqtt_client_start(mqtt_client);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start MQTT client: %s", esp_err_to_name(err));
+        return;
+    }
 }
