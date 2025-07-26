@@ -1,0 +1,5 @@
+theme: jekyll-theme-minimal
+title: BME680 WiFi Sensor
+description: ESP32-based environmental sensor with MQTT connectivity
+show_downloads: true
+google_analytics:
