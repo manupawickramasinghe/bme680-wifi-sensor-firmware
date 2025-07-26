@@ -69,5 +69,7 @@
   "files.associations": {
     "bme680.h": "c",
     "smartconfig.h": "c"
-  }
+  },
+  "idf.pythonInstallPath": "C:\\Espressif4.4\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.portWin": "COM5"
 }

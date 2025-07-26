@@ -71,9 +71,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 void mqtt_init(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://mqtt.eclipseprojects.io",
-        .credentials.username = "user",
-        .credentials.authentication.password = "client"
+        .broker.address.uri = "mqtt://test.mosquitto.org",
+        .credentials.username = "NULL",
+        .credentials.authentication.password = "NULL"
     };
 
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
