@@ -1,14 +1,15 @@
 name: Build and Release
-
 on:
   push:
     branches:
       - master
 
 jobs:
+  # This job creates a new GitHub Release for the current commit.
   create_release:
     runs-on: ubuntu-latest
     outputs:
+      # The upload URL for the release is passed to the build job.
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Create Release
@@ -17,36 +18,48 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # The release is tagged with the commit SHA to ensure uniqueness.
           tag_name: release-${{ github.sha }}
           name: Release ${{ github.sha }}
           draft: false
           prerelease: false
           generate_release_notes: true
 
+  # This job builds the firmware for each target specified in the matrix.
   build:
     needs: create_release
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # Define the list of ESP32 targets to build for.
         target: [esp32, esp32c3, esp32c6, esp32s3, esp32s2]
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
+          # Ensure that git submodules are also checked out.
           submodules: recursive
 
+      # This step uses the espressif/esp-idf-ci-action to build the project.
+      # Caching is enabled to speed up the process.
       - name: ESP-IDF Build
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.1.3
           target: ${{ matrix.target }}
           path: '.'
+          # This is the key change: enable caching.
+          # The action will cache the ESP-IDF installation and toolchain.
+          # A separate cache is created for each target in the matrix.
+          cache: ${{ matrix.target }}
 
+      # This step is for debugging purposes, to see the contents of the build directory.
       - name: List Build Directory
         run: |
           echo "Build directory contents:"
           ls -R build/
 
+      # This step prepares the binary files for the release.
       - name: Prepare Release Files
         run: |
           mkdir -p release-files
@@ -56,6 +69,7 @@ jobs:
           echo "Release files prepared:"
           ls -l release-files/
 
+      # This step uploads the compiled binary files as assets to the GitHub Release.
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v1
         env:
